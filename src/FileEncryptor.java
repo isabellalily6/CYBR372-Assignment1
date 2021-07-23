@@ -64,7 +64,7 @@ public class FileEncryptor {
 
         System.out.println("Random key=" + Base64.getEncoder().encodeToString(key));
         System.out.println("initVector=" + Base64.getEncoder().encodeToString(initVector));
-        
+
         IvParameterSpec iv = new IvParameterSpec(initVector);
         SecretKeySpec skeySpec = new SecretKeySpec(key, ALGORITHM);
         Cipher cipher = Cipher.getInstance(CIPHER);
