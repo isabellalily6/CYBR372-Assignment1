@@ -28,7 +28,7 @@ public class FileEncryptor {
     private static final String CIPHER = "AES/CBC/PKCS5PADDING";
 
     public static void main(String[] args) throws NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException, InvalidAlgorithmParameterException, IOException, InvalidKeySpecException {
-        if (args.length != 4 || (!args[0].equals("enc") && !args[0].equals("dec"))) {
+        if ((args.length != 6 && args.length != 4 && args.length != 2) || (!args[0].equals("enc") && !args[0].equals("dec") && args[0].equals("info"))) {
             System.out.println("Wrong arguments given");
             return;
         }
@@ -47,6 +47,8 @@ public class FileEncryptor {
             String inputFile = args[2];
             String outputFile = args[3];
             decryption(password, inputFile, outputFile);
+        } else if (state.equals("info")) {
+            
         }
     }
 
