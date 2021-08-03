@@ -1,4 +1,5 @@
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -25,8 +26,7 @@ import javax.crypto.spec.SecretKeySpec;
 public class FileEncryptor {
     private static final Logger LOG = Logger.getLogger(FileEncryptor.class.getSimpleName());
 
-    private static final String ALGORITHM = "AES";
-    private static String CIPHER = "AES/CBC/PKCS5PADDING";
+    private static String CIPHER = "/CBC/PKCS5PADDING";
     private static int COUNT = 1000;
 
     public static void main(String[] args) throws NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException, InvalidAlgorithmParameterException, IOException, InvalidKeySpecException {
@@ -39,14 +39,14 @@ public class FileEncryptor {
         String state = args[0];
 
         if (state.equals("enc")) {
-            CIPHER = args[1];
-            System.out.println(args[2]);
+            CIPHER = args[1] + CIPHER;
             int keyLength = Integer.parseInt(args[2]);
-            System.out.println(keyLength);
+            String cipher = args[1];
             String password = args[3];
             String inputFile = args[4];
             String outputFile = args[5];
-            encryption(keyLength, password, inputFile, outputFile);
+            System.out.println(CIPHER);
+            encryption(cipher, keyLength, password, inputFile, outputFile);
         } else if (state.equals("dec")) {
             String password = args[1];
             String inputFile = args[2];
@@ -57,7 +57,7 @@ public class FileEncryptor {
         }
     }
 
-    public static void encryption(Integer keyLength, String password, String inputFile, String outputFile) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidAlgorithmParameterException, InvalidKeyException, IOException, InvalidKeySpecException {
+    public static void encryption(String cipher, Integer keyLength, String password, String inputFile, String outputFile) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidAlgorithmParameterException, InvalidKeyException, IOException, InvalidKeySpecException {
         //This snippet is literally copied from SymmetrixExample
         SecureRandom sr = new SecureRandom();
 
@@ -67,7 +67,8 @@ public class FileEncryptor {
 
         byte[] salt = new byte[16];
         sr.nextBytes(salt); // 16 bytes salt
-        byte[] iv = new byte[16];
+        int ivLength = cipher.equals("AES") ? 16 : 8;
+        byte[] iv = new byte[ivLength];
         sr.nextBytes(iv); // 16 bytes salt
         IvParameterSpec ivParamSpec = new IvParameterSpec(iv);
 
@@ -84,15 +85,13 @@ public class FileEncryptor {
         SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
         KeySpec spec = new PBEKeySpec(password.toCharArray(), salt, 1000, keyLength);
         SecretKey pbeKey = new SecretKeySpec(factory.generateSecret(spec)
-                .getEncoded(), CIPHER);
+                .getEncoded(), cipher);
 
 
         // Create PBE Cipher
         Cipher pbeCipher = Cipher.getInstance(CIPHER);
-        System.out.println(pbeParamSpec.toString());
-        System.out.println(CIPHER);
         // Initialize PBE Cipher with key and parameters
-        pbeCipher.init(Cipher.ENCRYPT_MODE, pbeKey);
+        pbeCipher.init(Cipher.ENCRYPT_MODE, pbeKey, ivParamSpec);
 
         System.out.println("Random key=" + Base64.getEncoder().encodeToString(pbeKey.toString().getBytes()));
         System.out.println("initVector=" + Base64.getEncoder().encodeToString(salt));
@@ -108,6 +107,10 @@ public class FileEncryptor {
              CipherOutputStream cipherOut = new CipherOutputStream(fout, pbeCipher) {
              }) {
             final byte[] bytes = new byte[1024];
+            fout.write(cipher.getBytes().length);
+            fout.write(cipher.getBytes());
+            fout.write(keyLength.toString().getBytes().length);
+            fout.write(keyLength.toString().getBytes());
             fout.write(salt);
             fout.write(iv);
             for (int length = fin.read(bytes); length != -1; length = fin.read(bytes)) {
@@ -125,9 +128,8 @@ public class FileEncryptor {
 
         String info = getMetaData(inputFile);
         String[] data = info.split(" ");
-        CIPHER = data[0];
+        CIPHER = data[0] + CIPHER;
         int keyLength = Integer.parseInt(data[1]);
-        System.out.println(CIPHER + " " + keyLength);
 
         PBEKeySpec pbeKeySpec;
         PBEParameterSpec pbeParamSpec;
@@ -149,15 +151,26 @@ public class FileEncryptor {
 
 
         try {
+            byte[] cipherLength = encryptedData.readNBytes(1);
+            byte[] cipher = encryptedData.readNBytes(cipherLength[0]);
+            String s = new String(cipher, StandardCharsets.UTF_8);
+
+            byte[] keyLen = encryptedData.readNBytes(1);
+            byte[] key = encryptedData.readNBytes(keyLen[0]);
+            String ss = new String(key, StandardCharsets.UTF_8);
             byte[] salt = encryptedData.readNBytes(16);
-            byte[] initVector = encryptedData.readNBytes(16);
+            int ivLength = cipher.equals("AES") ? 16 : 8;
+            byte[] initVector = encryptedData.readNBytes(ivLength);
+
+
+
             pbeKeySpec = new PBEKeySpec(passwordChar, salt, count, keyLength);
             keyFac = SecretKeyFactory.getInstance("PBEWithHmacSHA256AndAES_256");
 
             SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
             KeySpec spec = new PBEKeySpec(passwordChar, salt, 1000, keyLength);
             SecretKey pbeKey = new SecretKeySpec(factory.generateSecret(spec)
-                    .getEncoded(), CIPHER);
+                    .getEncoded(), s);
 
             // Create PBE Cipher
             Cipher pbeCipher = Cipher.getInstance(CIPHER);
@@ -169,10 +182,9 @@ public class FileEncryptor {
 
             pbeParamSpec = new PBEParameterSpec(salt, count, ivParamSpec);
             // Initialize PBE Cipher with key and parameters
-            pbeCipher.init(Cipher.DECRYPT_MODE, pbeKey);
+            pbeCipher.init(Cipher.DECRYPT_MODE, pbeKey, ivParamSpec);
 
 
-            System.out.println(pbeParamSpec.toString());
             CipherInputStream decryptStream = new CipherInputStream(encryptedData, pbeCipher);
             OutputStream decryptedOut = Files.newOutputStream(decryptedPath);
             final byte[] bytes = new byte[1024];
@@ -189,38 +201,21 @@ public class FileEncryptor {
     }
 
     public static String getMetaData(String filename) throws IOException {
-        //Look for files here
         final Path tempDir = Paths.get("").toAbsolutePath();
-        final String filePath = tempDir.resolve(filename).toString();
+        final Path encryptedPath = tempDir.resolve(filename);
+        InputStream encryptedData = Files.newInputStream(encryptedPath);
+        byte[] cipherLength = encryptedData.readNBytes(1);
+        byte[] cipher = encryptedData.readNBytes(cipherLength[0]);
+        String s = new String(cipher, StandardCharsets.UTF_8);
 
-        BufferedReader reader = new BufferedReader(new FileReader(filePath));
-        String currentLine;
-        String finalLine = null;
-        while((currentLine = reader.readLine()) != null){
-            finalLine = currentLine;
-        }
-        reader.close();
+        byte[] keyLen = encryptedData.readNBytes(1);
+        byte[] key = encryptedData.readNBytes(keyLen[0]);
+        String ss = new String(key, StandardCharsets.UTF_8);
 
-        return finalLine;
+        return (s + " " + ss);
     }
 
     public static void writeMetaData(int keylength, String filename) throws IOException {
-        FileWriter fw = new FileWriter(filename, true);
-        BufferedWriter bw = new BufferedWriter(fw);
-        bw.newLine();
-        bw.write(CIPHER + " " + keylength);
-        bw.close();
-        fw.close();
-        System.out.println("Append to file");
-    }
 
-    public static void removeMetaData(int keylength, String filename) throws IOException {
-        FileWriter fw = new FileWriter(filename, true);
-        BufferedWriter bw = new BufferedWriter(fw);
-        bw.newLine();
-        bw.write(CIPHER + " " + keylength);
-        bw.close();
-        fw.close();
-        System.out.println("Append to file");
     }
 }
