@@ -22,7 +22,6 @@ import javax.crypto.spec.SecretKeySpec;
  */
 public class FileEncryptor {
     private static final Logger LOG = Logger.getLogger(FileEncryptor.class.getSimpleName());
-
     private static String CIPHER = "/CBC/PKCS5PADDING";
     private static int COUNT = 1000;
 
@@ -41,7 +40,7 @@ public class FileEncryptor {
 
         String state = args[0];
 
-        // Check whether the correct number of arguments are given, depending on the action
+        // Check whether state and the correct number of arguments are given, depending on the action
         if ((args.length == 6 && !state.equals("enc")) || (args.length == 4 && !state.equals("dec"))
                 || (args.length == 2 && !state.equals("info"))) {
             System.out.println("Wrong arguments given");
@@ -103,7 +102,7 @@ public class FileEncryptor {
 
             writeMetaData(fout, cipher, keyLength, salt, iv);
 
-            // write the encrypted data to the output file
+            // encrypt and write the encrypted data to the output file
             try (CipherOutputStream cipherOut = new CipherOutputStream(fout, pbeCipher)) {
                 final byte[] bytes = new byte[1024];
                 for (int length = fin.read(bytes); length != -1; length = fin.read(bytes)) {
@@ -118,7 +117,7 @@ public class FileEncryptor {
 
     /**
      * Decrypts a given file, to an output file using the information passed as parameters.
-     * 
+     *
      * @param password the password used to encrypt the file
      * @param inputFile the input file to encrypt
      * @param outputFile the output file of the encrypted information
@@ -228,7 +227,6 @@ public class FileEncryptor {
      */
     public static SecretKey generateSecretKey(String password, byte[] salt, int keyLength, String cipher) {
         SecretKey pbeKey = null;
-        System.out.println("password=" + Base64.getEncoder().encodeToString(pbeKey.toString().getBytes()));
         try {
             SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
             KeySpec spec = new PBEKeySpec(password.toCharArray(), salt, COUNT, keyLength);
@@ -236,6 +234,7 @@ public class FileEncryptor {
         } catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
             LOG.log(Level.INFO, "Unable to encrypt", e);
         }
+        System.out.println("password=" + Base64.getEncoder().encodeToString(pbeKey.toString().getBytes()));
         return pbeKey;
     }
 }
