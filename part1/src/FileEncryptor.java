@@ -28,6 +28,12 @@ public class FileEncryptor {
     private static final String ALGORITHM = "AES";
     private static final String CIPHER = "AES/CBC/PKCS5PADDING";
 
+    /**
+     * Main method which checks whether the arguments passed in are correct
+     * and if so calls, the corresponding methods.
+     *
+     * @param args the terminal arguments
+     */
     public static void main(String[] args) throws NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException, InvalidAlgorithmParameterException, IOException {
         // Check whether the number of arguments given are valid
         if((args.length != 3 && args.length != 5)){
@@ -57,6 +63,12 @@ public class FileEncryptor {
         }
     }
 
+    /**
+     * Encrypts a given file, to an output file.
+     *
+     * @param inputFile the input file to encrypt
+     * @param outputFile the output file of the encrypted information
+     */
     public static void encryption(String inputFile, String outputFile) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidAlgorithmParameterException, InvalidKeyException {
         SecureRandom sr = new SecureRandom();
 
@@ -100,6 +112,14 @@ public class FileEncryptor {
 
     }
 
+    /**
+     * Decrypts a given file, to an output file using the information passed as parameters.
+     *
+     * @param base64SecretKey the password used to encrypt the file, encoded in base64
+     * @param base64IV the IV used to encrypt the file, encoded in base64
+     * @param inputFile the input file to encrypt
+     * @param outputFile the output file of the encrypted information
+     */
     public static void decryption(String base64SecretKey, String base64IV, String inputFile, String outputFile) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidAlgorithmParameterException, InvalidKeyException {
         // Retrieve the key and IV by decoding the given parameters
         byte[] key = Base64.getDecoder().decode(base64SecretKey);
