@@ -8,14 +8,14 @@ import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.security.spec.InvalidKeySpecException;
 import java.util.Base64;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import javax.crypto.Cipher;
-import javax.crypto.CipherInputStream;
-import javax.crypto.CipherOutputStream;
-import javax.crypto.NoSuchPaddingException;
+import javax.crypto.*;
 import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.PBEKeySpec;
+import javax.crypto.spec.PBEParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
 /**
@@ -27,7 +27,7 @@ public class FileEncryptor {
     private static final String ALGORITHM = "AES";
     private static final String CIPHER = "AES/CBC/PKCS5PADDING";
 
-    public static void main(String[] args) throws NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException, InvalidAlgorithmParameterException, IOException {
+    public static void main(String[] args) throws NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException, InvalidAlgorithmParameterException, IOException, InvalidKeySpecException {
         if (args.length != 4 || (!args[0].equals("enc") && !args[0].equals("dec"))) {
             System.out.println("Wrong arguments given");
             return;
@@ -36,37 +36,53 @@ public class FileEncryptor {
         String state = args[0];
 
         if (state.equals("enc")) {
-            String base64SecretKey = args[1];
+            String password = args[1];
             String inputFile = args[2];
             String outputFile = args[3];
-            encryption(base64SecretKey, inputFile, outputFile);
+            encryption(password, inputFile, outputFile);
 
 
         } else if (state.equals("dec")) {
-            String base64SecretKey = args[1];
+            String password = args[1];
             String inputFile = args[2];
             String outputFile = args[3];
-            decryption(base64SecretKey, inputFile, outputFile);
+            decryption(password, inputFile, outputFile);
         }
     }
 
-    public static void encryption(String base64SecretKey, String inputFile, String outputFile) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidAlgorithmParameterException, InvalidKeyException, IOException {
+    public static void encryption(String password, String inputFile, String outputFile) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidAlgorithmParameterException, InvalidKeyException, IOException, InvalidKeySpecException {
         //This snippet is literally copied from SymmetrixExample
         SecureRandom sr = new SecureRandom();
 
-        byte[] key = Base64.getDecoder().decode(base64SecretKey);
-        byte[] initVector = new byte[16];
-        sr.nextBytes(initVector); // 16 bytes IV
+        PBEKeySpec pbeKeySpec;
+        PBEParameterSpec pbeParamSpec;
+        SecretKeyFactory keyFac;
 
-        System.out.println("Random key=" + Base64.getEncoder().encodeToString(key));
-        System.out.println("initVector=" + Base64.getEncoder().encodeToString(initVector));
-        System.out.println(initVector);
+        byte[] salt = new byte[16];
+        sr.nextBytes(salt); // 16 bytes salt
+        byte[] iv = new byte[16];
+        sr.nextBytes(iv); // 16 bytes salt
+        IvParameterSpec ivParamSpec = new IvParameterSpec(iv);
 
-        IvParameterSpec iv = new IvParameterSpec(initVector);
-        SecretKeySpec skeySpec = new SecretKeySpec(key, ALGORITHM);
-        Cipher cipher = Cipher.getInstance(CIPHER);
+        // Iteration count
+        int count = 1000;
 
-        cipher.init(Cipher.ENCRYPT_MODE, skeySpec, iv);
+        // Create PBE parameter set
+        pbeParamSpec = new PBEParameterSpec(salt, count, ivParamSpec);
+        char[] passwordChar = password.toCharArray();
+        pbeKeySpec = new PBEKeySpec(passwordChar);
+        keyFac = SecretKeyFactory.getInstance("PBEWithHmacSHA256AndAES_256");
+        SecretKey pbeKey = keyFac.generateSecret(pbeKeySpec);
+
+        // Create PBE Cipher
+        Cipher pbeCipher = Cipher.getInstance("PBEWithHmacSHA256AndAES_256");
+        System.out.println(pbeParamSpec.toString());
+
+        // Initialize PBE Cipher with key and parameters
+        pbeCipher.init(Cipher.ENCRYPT_MODE, pbeKey, pbeParamSpec);
+
+        System.out.println("Random key=" + Base64.getEncoder().encodeToString(pbeKey.toString().getBytes()));
+        System.out.println("initVector=" + Base64.getEncoder().encodeToString(salt));
 
         //Look for files here
         final Path tempDir = Paths.get("").toAbsolutePath();
@@ -76,10 +92,11 @@ public class FileEncryptor {
 
         try (InputStream fin = Files.newInputStream(inputPath);
              OutputStream fout = Files.newOutputStream(encryptedPath);
-             CipherOutputStream cipherOut = new CipherOutputStream(fout, cipher) {
+             CipherOutputStream cipherOut = new CipherOutputStream(fout, pbeCipher) {
              }) {
             final byte[] bytes = new byte[1024];
-            fout.write(initVector);
+            fout.write(salt);
+            fout.write(iv);
             for (int length = fin.read(bytes); length != -1; length = fin.read(bytes)) {
                 cipherOut.write(bytes, 0, length);
             }
@@ -90,8 +107,24 @@ public class FileEncryptor {
 
     }
 
-    public static void decryption(String base64SecretKey, String inputFile, String outputFile) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidAlgorithmParameterException, InvalidKeyException, IOException {
-        byte[] key = Base64.getDecoder().decode(base64SecretKey);
+    public static void decryption(String base64SecretKey, String inputFile, String outputFile) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidAlgorithmParameterException, InvalidKeyException, IOException, InvalidKeySpecException {
+
+        PBEKeySpec pbeKeySpec;
+        PBEParameterSpec pbeParamSpec;
+        SecretKeyFactory keyFac;
+
+        // Iteration count
+        int count = 1000;
+
+        // Create PBE parameter set
+        char[] passwordChar = base64SecretKey.toCharArray();
+        pbeKeySpec = new PBEKeySpec(passwordChar);
+        keyFac = SecretKeyFactory.getInstance("PBEWithHmacSHA256AndAES_256");
+        SecretKey pbeKey = keyFac.generateSecret(pbeKeySpec);
+
+        // Create PBE Cipher
+        Cipher pbeCipher = Cipher.getInstance("PBEWithHmacSHA256AndAES_256");
+
 
         //Look for files here
         final Path tempDir = Paths.get("").toAbsolutePath();
@@ -102,16 +135,21 @@ public class FileEncryptor {
 
 
         try {
+            byte[] salt = encryptedData.readNBytes(16);
             byte[] initVector = encryptedData.readNBytes(16);
 
+            IvParameterSpec ivParamSpec = new IvParameterSpec(initVector);
+
             System.out.println("initVector=" + Base64.getEncoder().encodeToString(initVector));
+            System.out.println("password=" + Base64.getEncoder().encodeToString(pbeKey.toString().getBytes()));
 
-            IvParameterSpec iv = new IvParameterSpec(initVector);
-            SecretKeySpec skeySpec = new SecretKeySpec(key, ALGORITHM);
-            Cipher cipher = Cipher.getInstance(CIPHER);
-            cipher.init(Cipher.DECRYPT_MODE, skeySpec, iv);
+            pbeParamSpec = new PBEParameterSpec(salt, count, ivParamSpec);
+            // Initialize PBE Cipher with key and parameters
+            pbeCipher.init(Cipher.DECRYPT_MODE, pbeKey, pbeParamSpec);
 
-            CipherInputStream decryptStream = new CipherInputStream(encryptedData, cipher);
+
+            System.out.println(pbeParamSpec.toString());
+            CipherInputStream decryptStream = new CipherInputStream(encryptedData, pbeCipher);
             OutputStream decryptedOut = Files.newOutputStream(decryptedPath);
             final byte[] bytes = new byte[1024];
             for (int length = decryptStream.read(bytes); length != -1; length = decryptStream.read(bytes)) {
