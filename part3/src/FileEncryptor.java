@@ -9,6 +9,7 @@ import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.security.spec.InvalidKeySpecException;
+import java.security.spec.KeySpec;
 import java.util.Base64;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -26,6 +27,8 @@ public class FileEncryptor {
 
     private static final String ALGORITHM = "AES";
     private static final String CIPHER = "AES/CBC/PKCS5PADDING";
+    private static int COUNT = 1000;
+
 
     public static void main(String[] args) throws NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException, InvalidAlgorithmParameterException, IOException, InvalidKeySpecException {
         if (args.length != 4 || (!args[0].equals("enc") && !args[0].equals("dec"))) {
@@ -54,35 +57,20 @@ public class FileEncryptor {
         //This snippet is literally copied from SymmetrixExample
         SecureRandom sr = new SecureRandom();
 
-        PBEKeySpec pbeKeySpec;
-        PBEParameterSpec pbeParamSpec;
-        SecretKeyFactory keyFac;
-
         byte[] salt = new byte[16];
         sr.nextBytes(salt); // 16 bytes salt
         byte[] iv = new byte[16];
         sr.nextBytes(iv); // 16 bytes salt
         IvParameterSpec ivParamSpec = new IvParameterSpec(iv);
 
-        // Iteration count
-        int count = 1000;
-
         // Create PBE parameter set
-        pbeParamSpec = new PBEParameterSpec(salt, count, ivParamSpec);
-        char[] passwordChar = password.toCharArray();
-        pbeKeySpec = new PBEKeySpec(passwordChar);
-        keyFac = SecretKeyFactory.getInstance("PBEWithHmacSHA256AndAES_256");
-        SecretKey pbeKey = keyFac.generateSecret(pbeKeySpec);
+        SecretKey pbeKey = generateSecretKey(password, salt);
 
         // Create PBE Cipher
-        Cipher pbeCipher = Cipher.getInstance("PBEWithHmacSHA256AndAES_256");
-        System.out.println(pbeParamSpec.toString());
+        Cipher pbeCipher = Cipher.getInstance(CIPHER);
 
         // Initialize PBE Cipher with key and parameters
-        pbeCipher.init(Cipher.ENCRYPT_MODE, pbeKey, pbeParamSpec);
-
-        System.out.println("Random key=" + Base64.getEncoder().encodeToString(pbeKey.toString().getBytes()));
-        System.out.println("initVector=" + Base64.getEncoder().encodeToString(salt));
+        pbeCipher.init(Cipher.ENCRYPT_MODE, pbeKey, ivParamSpec);
 
         //Look for files here
         final Path tempDir = Paths.get("").toAbsolutePath();
@@ -107,25 +95,7 @@ public class FileEncryptor {
 
     }
 
-    public static void decryption(String base64SecretKey, String inputFile, String outputFile) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidAlgorithmParameterException, InvalidKeyException, IOException, InvalidKeySpecException {
-
-        PBEKeySpec pbeKeySpec;
-        PBEParameterSpec pbeParamSpec;
-        SecretKeyFactory keyFac;
-
-        // Iteration count
-        int count = 1000;
-
-        // Create PBE parameter set
-        char[] passwordChar = base64SecretKey.toCharArray();
-        pbeKeySpec = new PBEKeySpec(passwordChar);
-        keyFac = SecretKeyFactory.getInstance("PBEWithHmacSHA256AndAES_256");
-        SecretKey pbeKey = keyFac.generateSecret(pbeKeySpec);
-
-        // Create PBE Cipher
-        Cipher pbeCipher = Cipher.getInstance("PBEWithHmacSHA256AndAES_256");
-
-
+    public static void decryption(String password, String inputFile, String outputFile) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidAlgorithmParameterException, InvalidKeyException, IOException, InvalidKeySpecException {
         //Look for files here
         final Path tempDir = Paths.get("").toAbsolutePath();
         final Path encryptedPath = tempDir.resolve(inputFile);
@@ -137,18 +107,20 @@ public class FileEncryptor {
         try {
             byte[] salt = encryptedData.readNBytes(16);
             byte[] initVector = encryptedData.readNBytes(16);
-
             IvParameterSpec ivParamSpec = new IvParameterSpec(initVector);
+
+            // Create PBE parameter set
+            SecretKey pbeKey = generateSecretKey(password, salt);
+
+            // Create PBE Cipher
+            Cipher pbeCipher = Cipher.getInstance(CIPHER);
 
             System.out.println("initVector=" + Base64.getEncoder().encodeToString(initVector));
             System.out.println("password=" + Base64.getEncoder().encodeToString(pbeKey.toString().getBytes()));
 
-            pbeParamSpec = new PBEParameterSpec(salt, count, ivParamSpec);
             // Initialize PBE Cipher with key and parameters
-            pbeCipher.init(Cipher.DECRYPT_MODE, pbeKey, pbeParamSpec);
+            pbeCipher.init(Cipher.DECRYPT_MODE, pbeKey, ivParamSpec);
 
-
-            System.out.println(pbeParamSpec.toString());
             CipherInputStream decryptStream = new CipherInputStream(encryptedData, pbeCipher);
             OutputStream decryptedOut = Files.newOutputStream(decryptedPath);
             final byte[] bytes = new byte[1024];
@@ -163,4 +135,23 @@ public class FileEncryptor {
 
         LOG.info("Decryption complete, open " + decryptedPath);
     }
+
+    /**
+     * Generates a secret key from a given password, salt and cipher.
+     *
+     *
+     * @return the secret key
+     */
+    public static SecretKey generateSecretKey(String password, byte[] salt) {
+            SecretKey pbeKey = null;
+            try {
+                SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+                KeySpec spec = new PBEKeySpec(password.toCharArray(), salt, COUNT, 128);
+                pbeKey = new SecretKeySpec(factory.generateSecret(spec).getEncoded(), "AES");
+            } catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
+                LOG.log(Level.INFO, "Unable to encrypt", e);
+            }
+            System.out.println("password=" + Base64.getEncoder().encodeToString(pbeKey.toString().getBytes()));
+            return pbeKey;
+        }
 }
