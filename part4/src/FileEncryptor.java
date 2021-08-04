@@ -73,6 +73,7 @@ public class FileEncryptor {
      */
     public static void encryption(String cipher, Integer keyLength, String password, String inputFile, String outputFile) {
         SecureRandom sr = new SecureRandom();
+
         // create the 16 byte salt
         byte[] salt = new byte[16];
         sr.nextBytes(salt);
@@ -109,10 +110,10 @@ public class FileEncryptor {
                     cipherOut.write(bytes, 0, length);
                 }
             }
-            LOG.info("Encryption finished, saved at " + encryptedPath);
         } catch (IOException | NoSuchAlgorithmException | NoSuchPaddingException | InvalidKeyException | InvalidAlgorithmParameterException e) {
             LOG.log(Level.INFO, "Unable to encrypt", e);
         }
+        LOG.info("Encryption finished, saved at " + encryptedPath);
     }
 
     /**
@@ -159,10 +160,10 @@ public class FileEncryptor {
                     decryptedOut.write(bytes, 0, length);
                 }
             }
-            LOG.info("Decryption complete, open " + decryptedPath);
         } catch (IOException | NoSuchAlgorithmException | NoSuchPaddingException | InvalidKeyException | InvalidAlgorithmParameterException ex) {
             Logger.getLogger(FileEncryptor.class.getName()).log(Level.SEVERE, "Unable to decrypt", ex);
         }
+        LOG.info("Decryption complete, open " + decryptedPath);
     }
 
     /**
@@ -219,6 +220,7 @@ public class FileEncryptor {
     /**
      * Generates a secret key from a given password, salt, key length and cipher.
      *
+     * @param password the password used to create the key
      * @param salt the salt to use to create the key
      * @param keyLength the key length to use to create the key
      * @param cipher the cipher to use to create the key
