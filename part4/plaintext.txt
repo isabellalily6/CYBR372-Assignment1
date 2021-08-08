@@ -1,1 +1,7 @@
 hello, this is some text
+
+Please encrypt me...
+
+Dun dun dun
+
+Testing this file
