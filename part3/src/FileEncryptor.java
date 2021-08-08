@@ -37,7 +37,7 @@ public class FileEncryptor {
      *
      * @param args the terminal arguments
      */
-    public static void main(String[] args) throws NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException, InvalidAlgorithmParameterException, IOException, InvalidKeySpecException {
+    public static void main(String[] args) {
         // Check whether state and the correct number of arguments are given
         if (args.length != 4 || (!args[0].equals("enc") && !args[0].equals("dec"))) {
             System.out.println("Wrong arguments given");
@@ -46,35 +46,51 @@ public class FileEncryptor {
 
         String state = args[0];
 
-        if (state.equals("enc")) {
-            // if the state is enc, set the cipher and encrypt the file
-            String password = args[1];
-            String inputFile = args[2];
-            String outputFile = args[3];
-            encryption(password, inputFile, outputFile);
-        } else if (state.equals("dec")) {
-            // if the state is dec, decrypt the file
-            String password = args[1];
-            String inputFile = args[2];
-            String outputFile = args[3];
-            decryption(password, inputFile, outputFile);
+        try {
+            if (state.equals("enc")) {
+                // if the state is enc, set the cipher and encrypt the file
+                String password = args[1];
+                String inputFile = args[2];
+                String outputFile = args[3];
+                encryption(password, inputFile, outputFile);
+            } else if (state.equals("dec")) {
+                // if the state is dec, decrypt the file
+                String password = args[1];
+                String inputFile = args[2];
+                String outputFile = args[3];
+                decryption(password, inputFile, outputFile);
+            }
+        // These catch statements make the code more secure as they don't disclose important information
+        } catch (IOException e) {
+            LOG.log(Level.INFO, "Unable to encrypt, the I/O operation failed");
+        } catch (NoSuchPaddingException e) {
+            LOG.log(Level.INFO, "Unable to encrypt, the padding scheme is incorrect");
+        } catch (NoSuchAlgorithmException e) {
+            LOG.log(Level.INFO, "Unable to encrypt, the encryption algorithm is incorrect");
+        } catch (InvalidKeyException e) {
+            LOG.log(Level.INFO, "Unable to encrypt, the encryption key is invalid");
+        } catch (InvalidAlgorithmParameterException e) {
+            LOG.log(Level.INFO, "Unable to encrypt, the algorithm is invalid");
         }
     }
 
     /**
      * Encrypts a given file, to an output file using the information passed as parameters.
      *
-     * @param password the password used to encrypt the file
-     * @param inputFile the input file to encrypt
+     * @param password   the password used to encrypt the file
+     * @param inputFile  the input file to encrypt
      * @param outputFile the output file of the encrypted information
      */
-    public static void encryption(String password, String inputFile, String outputFile) {
+    public static void encryption(String password, String inputFile, String outputFile) throws IOException, NoSuchPaddingException, NoSuchAlgorithmException, InvalidAlgorithmParameterException, InvalidKeyException {
         SecureRandom sr = new SecureRandom();
 
         // create the 16 byte salt
+        // this makes the code secure as the salt is randomly generated using SecureRandom
         byte[] salt = new byte[16];
         sr.nextBytes(salt);
+
         // create the 16 byte iv
+        // this makes the code secure as the IV is randomly generated using SecureRandom
         byte[] iv = new byte[16];
         sr.nextBytes(iv);
         IvParameterSpec ivParamSpec = new IvParameterSpec(iv);
@@ -89,40 +105,39 @@ public class FileEncryptor {
              OutputStream fout = Files.newOutputStream(encryptedPath)) {
 
             // Generate the secret key
-            SecretKey pbeKey = generateSecretKey(password, salt);
+            SecretKey key = generateSecretKey(password, salt);
 
-            // Create PBE Cipher
-            Cipher pbeCipher = Cipher.getInstance(CIPHER);
+            // Create Cipher
+            Cipher PCipher = Cipher.getInstance(CIPHER);
 
-            // Initialize PBE Cipher with key and parameters
-            pbeCipher.init(Cipher.ENCRYPT_MODE, pbeKey, ivParamSpec);
+            // Initialize Cipher with key and parameters
+            PCipher.init(Cipher.ENCRYPT_MODE, key, ivParamSpec);
 
             // write the salt and IV to the output file
             fout.write(salt);
             fout.write(iv);
 
             // encrypt and write the encrypted data to the output file
-            try (CipherOutputStream cipherOut = new CipherOutputStream(fout, pbeCipher)) {
+            // this makes the code secure as a CipherOutputStream is used
+            try (CipherOutputStream cipherOut = new CipherOutputStream(fout, PCipher)) {
                 final byte[] bytes = new byte[1024];
                 for (int length = fin.read(bytes); length != -1; length = fin.read(bytes)) {
                     cipherOut.write(bytes, 0, length);
                 }
             }
-        } catch (IOException | NoSuchAlgorithmException | NoSuchPaddingException | InvalidKeyException | InvalidAlgorithmParameterException e) {
-            LOG.log(Level.INFO, "Unable to encrypt", e);
+            System.out.println("password=" + Base64.getEncoder().encodeToString(key.toString().getBytes()));
+            LOG.info("Encryption finished, saved at " + encryptedPath);
         }
-        LOG.info("Encryption finished, saved at " + encryptedPath);
-
     }
 
     /**
      * Decrypts a given file, to an output file using the information passed as parameters.
      *
-     * @param password the password used to encrypt the file
-     * @param inputFile the input file to encrypt
+     * @param password   the password used to encrypt the file
+     * @param inputFile  the input file to encrypt
      * @param outputFile the output file of the encrypted information
      */
-    public static void decryption(String password, String inputFile, String outputFile) {
+    public static void decryption(String password, String inputFile, String outputFile) throws IOException, InvalidAlgorithmParameterException, InvalidKeyException, NoSuchPaddingException, NoSuchAlgorithmException {
         // Determine where to find the files and find them
         final Path tempDir = Paths.get("").toAbsolutePath();
         final Path encryptedPath = tempDir.resolve(inputFile);
@@ -130,7 +145,7 @@ public class FileEncryptor {
 
         // try and open the input and output file
         try (InputStream encryptedData = Files.newInputStream(encryptedPath);
-        OutputStream decryptedOut = Files.newOutputStream(decryptedPath)){
+             OutputStream decryptedOut = Files.newOutputStream(decryptedPath)) {
 
             // Retrieve the salt and IV from the input file
             byte[] salt = encryptedData.readNBytes(16);
@@ -138,33 +153,31 @@ public class FileEncryptor {
             IvParameterSpec ivParamSpec = new IvParameterSpec(initVector);
 
             // Generate the secret key
-            SecretKey pbeKey = generateSecretKey(password, salt);
+            SecretKey key = generateSecretKey(password, salt);
 
-            // Create PBE Cipher
-            Cipher pbeCipher = Cipher.getInstance(CIPHER);
+            // Create Cipher
+            Cipher pCipher = Cipher.getInstance(CIPHER);
 
-            // Initialize PBE Cipher with key and parameters
-            pbeCipher.init(Cipher.DECRYPT_MODE, pbeKey, ivParamSpec);
+            // Initialize Cipher with key and parameters
+            pCipher.init(Cipher.DECRYPT_MODE, key, ivParamSpec);
 
             // decrypt the information and write it to the output file
-            try (CipherInputStream decryptStream = new CipherInputStream(encryptedData, pbeCipher)) {
+            // this makes the code secure as a CipherInputStream is used
+            try (CipherInputStream decryptStream = new CipherInputStream(encryptedData, pCipher)) {
                 final byte[] bytes = new byte[1024];
                 for (int length = decryptStream.read(bytes); length != -1; length = decryptStream.read(bytes)) {
                     decryptedOut.write(bytes, 0, length);
                 }
             }
-        } catch (IOException | NoSuchAlgorithmException | NoSuchPaddingException | InvalidKeyException | InvalidAlgorithmParameterException ex) {
-            Logger.getLogger(FileEncryptor.class.getName()).log(Level.SEVERE, "Unable to decrypt", ex);
+            LOG.info("Decryption complete, open " + decryptedPath);
         }
-        LOG.info("Decryption complete, open " + decryptedPath);
     }
 
     /**
      * Generates a secret key from a given password and salt
      *
      * @param password the password used to create the key
-     * @param salt the salt to use to create the key
-     *
+     * @param salt     the salt to use to create the key
      * @return the secret key
      */
     public static SecretKey generateSecretKey(String password, byte[] salt) {
@@ -176,7 +189,6 @@ public class FileEncryptor {
         } catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
             LOG.log(Level.INFO, "Unable to encrypt", e);
         }
-        System.out.println("password=" + Base64.getEncoder().encodeToString(pbeKey.toString().getBytes()));
         return pbeKey;
     }
 }
