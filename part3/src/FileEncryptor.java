@@ -28,7 +28,8 @@ public class FileEncryptor {
     private static final String ALGORITHM = "AES";
     private static final String CIPHER = "AES/CBC/PKCS5PADDING";
     private static final int KEYLENGTH = 128;
-    private static int COUNT = 1000;
+    // This count makes the code more secure as it adheres to the NIST specifications
+    private static final int COUNT = 400000;
 
 
     /**
@@ -62,15 +63,15 @@ public class FileEncryptor {
             }
         // These catch statements make the code more secure as they don't disclose important information
         } catch (IOException e) {
-            LOG.log(Level.INFO, "Unable to encrypt, the I/O operation failed");
+            LOG.log(Level.INFO, "Unable to encrypt/decrypt, an error occurred reading or writing to a file");
         } catch (NoSuchPaddingException e) {
-            LOG.log(Level.INFO, "Unable to encrypt, the padding scheme is incorrect");
+            LOG.log(Level.INFO, "Unable to encrypt/decrypt, the padding scheme is incorrect");
         } catch (NoSuchAlgorithmException e) {
-            LOG.log(Level.INFO, "Unable to encrypt, the encryption algorithm is incorrect");
+            LOG.log(Level.INFO, "Unable to encrypt/decrypt, the encryption algorithm is incorrect");
         } catch (InvalidKeyException e) {
-            LOG.log(Level.INFO, "Unable to encrypt, the encryption key is invalid");
+            LOG.log(Level.INFO, "Unable to encrypt/decrypt, the encryption key is invalid");
         } catch (InvalidAlgorithmParameterException e) {
-            LOG.log(Level.INFO, "Unable to encrypt, the algorithm is invalid");
+            LOG.log(Level.INFO, "Unable to encrypt/decrypt, the algorithm is invalid");
         }
     }
 
@@ -86,6 +87,7 @@ public class FileEncryptor {
 
         // create the 16 byte salt
         // this makes the code secure as the salt is randomly generated using SecureRandom
+        // this salt makes the code more secure as it is 16 bytes which adheres to the NIST specifications
         byte[] salt = new byte[16];
         sr.nextBytes(salt);
 
@@ -107,10 +109,8 @@ public class FileEncryptor {
             // Generate the secret key
             SecretKey key = generateSecretKey(password, salt);
 
-            // Create Cipher
+            // Create and initialize the cipher with key and parameters
             Cipher PCipher = Cipher.getInstance(CIPHER);
-
-            // Initialize Cipher with key and parameters
             PCipher.init(Cipher.ENCRYPT_MODE, key, ivParamSpec);
 
             // write the salt and IV to the output file
@@ -125,7 +125,7 @@ public class FileEncryptor {
                     cipherOut.write(bytes, 0, length);
                 }
             }
-            System.out.println("password=" + Base64.getEncoder().encodeToString(key.toString().getBytes()));
+            System.out.println("password= " + Base64.getEncoder().encodeToString(key.getEncoded()));
             LOG.info("Encryption finished, saved at " + encryptedPath);
         }
     }
@@ -155,10 +155,8 @@ public class FileEncryptor {
             // Generate the secret key
             SecretKey key = generateSecretKey(password, salt);
 
-            // Create Cipher
+            // Create and initialize the cipher with key and parameters
             Cipher pCipher = Cipher.getInstance(CIPHER);
-
-            // Initialize Cipher with key and parameters
             pCipher.init(Cipher.DECRYPT_MODE, key, ivParamSpec);
 
             // decrypt the information and write it to the output file
@@ -180,14 +178,18 @@ public class FileEncryptor {
      * @param salt     the salt to use to create the key
      * @return the secret key
      */
-    public static SecretKey generateSecretKey(String password, byte[] salt) {
+    public static SecretKey generateSecretKey(String password, byte[] salt) throws NoSuchAlgorithmException {
         SecretKey pbeKey = null;
         try {
+            // Generates a key from a given password
+            // This makes the code secure as a random salt is used along with a high count number
+            // so the generated key is random and more secure
+            // Furthermore, PBKDF2 is a NIST approved algorithm and HMAC is used
             SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
             KeySpec spec = new PBEKeySpec(password.toCharArray(), salt, COUNT, KEYLENGTH);
             pbeKey = new SecretKeySpec(factory.generateSecret(spec).getEncoded(), ALGORITHM);
-        } catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
-            LOG.log(Level.INFO, "Unable to encrypt", e);
+        } catch (InvalidKeySpecException e) {
+            LOG.log(Level.INFO, "Unable to encrypt/decrypt, the key specification is invalid");
         }
         return pbeKey;
     }

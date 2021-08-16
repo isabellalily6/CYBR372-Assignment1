@@ -19,7 +19,7 @@ import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
 /**
- * @author Erik Costlow
+ * @author Isabella Tomaz-Ketley
  */
 public class FileEncryptor {
     private static final Logger LOG = Logger.getLogger(FileEncryptor.class.getSimpleName());
@@ -63,15 +63,17 @@ public class FileEncryptor {
             }
         // These catch statements make the code more secure as they don't disclose important information
         } catch (IOException e) {
-            LOG.log(Level.INFO, "Unable to encrypt, the I/O operation failed");
+            LOG.log(Level.INFO, "Unable to encrypt/decrypt, an error occurred reading or writing to a file");
         } catch (NoSuchPaddingException e) {
-            LOG.log(Level.INFO, "Unable to encrypt, the padding scheme is incorrect");
+            LOG.log(Level.INFO, "Unable to encrypt/decrypt, the padding scheme is incorrect");
         } catch (NoSuchAlgorithmException e) {
-            LOG.log(Level.INFO, "Unable to encrypt, the encryption algorithm is incorrect");
+            LOG.log(Level.INFO, "Unable to encrypt/decrypt, the encryption algorithm is incorrect");
         } catch (InvalidKeyException e) {
-            LOG.log(Level.INFO, "Unable to encrypt, the encryption key is invalid");
+            LOG.log(Level.INFO, "Unable to encrypt/decrypt, the encryption key is invalid");
         } catch (InvalidAlgorithmParameterException e) {
-            LOG.log(Level.INFO, "Unable to encrypt, the algorithm is invalid");
+            LOG.log(Level.INFO, "Unable to encrypt/decrypt, the algorithm is invalid");
+        } catch (Exception e) {
+            LOG.log(Level.INFO, e.getMessage());
         }
     }
 
@@ -117,8 +119,8 @@ public class FileEncryptor {
                 cipherOut.write(bytes, 0, length);
             }
             // print out the base64 encoded key and IV
-            System.out.println("Secret key=" + Base64.getEncoder().encodeToString(key));
-            System.out.println("initVector=" + Base64.getEncoder().encodeToString(initVector));
+            System.out.println("Secret key= " + Base64.getEncoder().encodeToString(key));
+            System.out.println("initVector= " + Base64.getEncoder().encodeToString(initVector));
 
             LOG.info("Encryption finished, saved at " + encryptedPath);
         }
@@ -132,10 +134,18 @@ public class FileEncryptor {
      * @param inputFile       the input file to encrypt
      * @param outputFile      the output file of the encrypted information
      */
-    public static void decryption(String base64SecretKey, String base64IV, String inputFile, String outputFile) throws IOException, NoSuchPaddingException, NoSuchAlgorithmException, InvalidAlgorithmParameterException, InvalidKeyException {
+    public static void decryption(String base64SecretKey, String base64IV, String inputFile, String outputFile) throws Exception {
+        // Create parameters to store the key and initVector
+        byte[] key;
+        byte[] initVector;
+
         // Retrieve the key and IV by decoding the given parameters
-        byte[] key = Base64.getDecoder().decode(base64SecretKey);
-        byte[] initVector = Base64.getDecoder().decode(base64IV);
+        try {
+            key = Base64.getDecoder().decode(base64SecretKey);
+            initVector = Base64.getDecoder().decode(base64IV);
+        } catch(Exception e){
+            throw new Exception("Unable to decrypt, incorrect base64 parameters entered");
+        }
 
         // Create the IV
         IvParameterSpec iv = new IvParameterSpec(initVector);

@@ -23,7 +23,8 @@ import javax.crypto.spec.SecretKeySpec;
 public class FileEncryptor {
     private static final Logger LOG = Logger.getLogger(FileEncryptor.class.getSimpleName());
     private static String CIPHER = "/CBC/PKCS5PADDING";
-    private static int COUNT = 1000;
+    // This count makes the code more secure as it adheres to the NIST specifications
+    private static final int COUNT = 400000;
 
     /**
      * Main method which checks whether the arguments passed in are correct
@@ -41,7 +42,11 @@ public class FileEncryptor {
         String state = args[0];
 
         // Check whether state and the correct number of arguments are given, depending on the action
-        if ((args.length == 6 && !state.equals("enc")) || (args.length == 4 && !state.equals("dec"))
+        if(args.length != 6 && args.length != 4 && args.length != 2){
+            System.out.println("Wrong number of arguments given");
+            return;
+        }
+        else if ((args.length == 6 && !state.equals("enc")) || (args.length == 4 && !state.equals("dec"))
                 || (args.length == 2 && !state.equals("info"))) {
             System.out.println("Wrong arguments given");
             return;
@@ -63,15 +68,15 @@ public class FileEncryptor {
             }
         // These catch statements make the code more secure as they don't disclose important information
         } catch (IOException e) {
-            LOG.log(Level.INFO, "Unable to encrypt, the I/O operation failed");
+            LOG.log(Level.INFO, "Unable to encrypt/decrypt, an error occurred reading or writing to a file");
         } catch (NoSuchPaddingException e) {
-            LOG.log(Level.INFO, "Unable to encrypt, the padding scheme is incorrect");
+            LOG.log(Level.INFO, "Unable to encrypt/decrypt, the padding scheme is incorrect");
         } catch (NoSuchAlgorithmException e) {
-            LOG.log(Level.INFO, "Unable to encrypt, the encryption algorithm is incorrect");
+            LOG.log(Level.INFO, "Unable to encrypt/decrypt, the encryption algorithm is incorrect");
         } catch (InvalidKeyException e) {
-            LOG.log(Level.INFO, "Unable to encrypt, the encryption key is invalid");
+            LOG.log(Level.INFO, "Unable to encrypt/decrypt, the encryption key is invalid");
         } catch (InvalidAlgorithmParameterException e) {
-            LOG.log(Level.INFO, "Unable to encrypt, the algorithm is invalid");
+            LOG.log(Level.INFO, "Unable to encrypt/decrypt, the algorithm is invalid");
         }
     }
 
@@ -89,6 +94,7 @@ public class FileEncryptor {
 
         // create the 16 byte salt
         // this makes the code secure as the salt is randomly generated using SecureRandom
+        // this salt makes the code more secure as it is 16 bytes which adheres to the NIST specifications
         byte[] salt = new byte[16];
         sr.nextBytes(salt);
 
@@ -111,10 +117,8 @@ public class FileEncryptor {
             // Create the secret key
             SecretKey key = generateSecretKey(password, salt, keyLength, cipher);
 
-            // Create PBE Cipher
+            // Create and initialize the cipher with key and parameters
             Cipher pCipher = Cipher.getInstance(CIPHER);
-
-            // Initialize PBE Cipher with key and parameters
             pCipher.init(Cipher.ENCRYPT_MODE, key, ivParamSpec);
 
             writeMetaData(fout, cipher, keyLength, salt, iv);
@@ -127,7 +131,7 @@ public class FileEncryptor {
                     cipherOut.write(bytes, 0, length);
                 }
             }
-            System.out.println("password=" + Base64.getEncoder().encodeToString(key.toString().getBytes()));
+            System.out.println("password= " + Base64.getEncoder().encodeToString(key.getEncoded()));
             LOG.info("Encryption finished, saved at " + encryptedPath);
         }
     }
@@ -148,6 +152,7 @@ public class FileEncryptor {
         // try and open the input and output file
         try (InputStream encryptedData = Files.newInputStream(encryptedPath);
              OutputStream decryptedOut = Files.newOutputStream(decryptedPath)) {
+
             // Retrieve the cipher algorithm and key length
             String[] cipherData = getMetaData(null, encryptedData).split(" ");
             String cipher = cipherData[0];
@@ -163,10 +168,8 @@ public class FileEncryptor {
             // Create the secret key
             SecretKey key = generateSecretKey(password, salt, keyLength, cipher);
 
-            // Create Cipher
+            // Create and initialize the cipher with key and parameters
             Cipher pCipher = Cipher.getInstance(CIPHER);
-
-            // Initialize Cipher with key and parameters
             pCipher.init(Cipher.DECRYPT_MODE, key, ivParamSpec);
 
             // decrypt the information and write it to the output file
@@ -191,20 +194,24 @@ public class FileEncryptor {
      * @return a string containing the retrieved metadata
      */
     public static String getMetaData(String filename, InputStream encryptedData) throws IOException {
+        // check whether the input stream is not null, and if it is, open it
         if (encryptedData == null) {
             final Path tempDir = Paths.get("").toAbsolutePath();
             final Path encryptedPath = tempDir.resolve(filename);
             encryptedData = Files.newInputStream(encryptedPath);
         }
 
+        // read the cipher information from the file
         byte[] cipherLength = encryptedData.readNBytes(1);
         byte[] cipher = encryptedData.readNBytes(cipherLength[0]);
         String cipherString = new String(cipher, StandardCharsets.UTF_8);
 
+        // read the keylength information from the file
         byte[] keyLen = encryptedData.readNBytes(1);
         byte[] key = encryptedData.readNBytes(keyLen[0]);
         String keyLengthString = new String(key, StandardCharsets.UTF_8);
 
+        // if the filename is null, then close the file as it doesn't need to be used anymore
         if (filename != null) {
             encryptedData.close();
         }
@@ -222,17 +229,16 @@ public class FileEncryptor {
      * @param salt      the salt to write to the file
      * @param iv        the iv to write to the file
      */
-    public static void writeMetaData(OutputStream fout, String cipher, Integer keyLength, byte[] salt, byte[] iv) {
-        try {
-            fout.write(cipher.getBytes().length);
-            fout.write(cipher.getBytes());
-            fout.write(keyLength.toString().getBytes().length);
-            fout.write(keyLength.toString().getBytes());
-            fout.write(salt);
-            fout.write(iv);
-        } catch (IOException e) {
-            LOG.log(Level.INFO, "Unable to encrypt", e);
-        }
+    public static void writeMetaData(OutputStream fout, String cipher, Integer keyLength, byte[] salt, byte[] iv) throws IOException {
+        // write the length of the cipher and the cipher to the file
+        fout.write(cipher.getBytes().length);
+        fout.write(cipher.getBytes());
+        // write the length of the key length and the key length to the file
+        fout.write(keyLength.toString().getBytes().length);
+        fout.write(keyLength.toString().getBytes());
+        // write the salt and IV to the file
+        fout.write(salt);
+        fout.write(iv);
     }
 
     /**
@@ -244,14 +250,18 @@ public class FileEncryptor {
      * @param cipher    the cipher to use to create the key
      * @return the secret key
      */
-    public static SecretKey generateSecretKey(String password, byte[] salt, int keyLength, String cipher) {
+    public static SecretKey generateSecretKey(String password, byte[] salt, int keyLength, String cipher) throws NoSuchAlgorithmException {
         SecretKey pbeKey = null;
         try {
+            // Generates a key from a given password
+            // This makes the code secure as a random salt is used along with a high count number
+            // so the generated key is random and more secure
+            // Furthermore, PBKDF2 is a NIST approved algorithm and HMAC is used
             SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
             KeySpec spec = new PBEKeySpec(password.toCharArray(), salt, COUNT, keyLength);
             pbeKey = new SecretKeySpec(factory.generateSecret(spec).getEncoded(), cipher);
-        } catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
-            LOG.log(Level.INFO, "Unable to encrypt", e);
+        } catch (InvalidKeySpecException e) {
+            LOG.log(Level.INFO, "Unable to encrypt/decrypt, the key specification is invalid");
         }
         return pbeKey;
     }
